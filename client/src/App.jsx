@@ -14,6 +14,7 @@ import Calendar from './pages/Calendar'
 import Settings from './pages/Settings'
 import Revenue from './pages/Revenue'
 import Expenses from './pages/Expenses'
+import Beacon from './components/Beacon';
 
 const TOKEN_KEY = 'oc_token'
 
@@ -151,6 +152,7 @@ export default function App() {
           navigateTo={navigateTo}
         />
       </Suspense>
-    </Layout>
+    <Beacon />
+      </Layout>
   )
 }
