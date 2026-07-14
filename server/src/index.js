@@ -1,6 +1,6 @@
-require('dotenv').config();
-
 const path = require('path');
+// Load .env from server/ regardless of the process working directory
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -274,6 +274,73 @@ async function initializeDatabase() {
       );
     `);
 
+    // --- YouTube integration (feature/youtube-connect) ---
+    await pool.query(`
+      ALTER TABLE oc_channels
+        ADD COLUMN IF NOT EXISTS access_token TEXT,
+        ADD COLUMN IF NOT EXISTS refresh_token TEXT,
+        ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS uploads_playlist_id VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS connected BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP;
+    `);
+
+    await pool.query(`
+      ALTER TABLE oc_content
+        ADD COLUMN IF NOT EXISTS view_count BIGINT,
+        ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;
+    `);
+
+    // --- Series / Show Calendar (feature/show-calendar) ---
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oc_series (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES oc_users(id),
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        content_type VARCHAR(50) DEFAULT 'video',
+        cadence_per_week NUMERIC(4,2) DEFAULT 1,
+        day_of_week INTEGER,
+        title_template VARCHAR(500),
+        description_template TEXT,
+        tags_template TEXT,
+        target_duration_seconds INTEGER,
+        next_episode_number INTEGER DEFAULT 1,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      ALTER TABLE oc_content
+        ADD COLUMN IF NOT EXISTS series_id INTEGER REFERENCES oc_series(id),
+        ADD COLUMN IF NOT EXISTS episode_number INTEGER,
+        ADD COLUMN IF NOT EXISTS brief JSONB DEFAULT '{}';
+    `);
+
+    // --- AI settings (feature/ai-drafting) ---
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oc_ai_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER UNIQUE REFERENCES oc_users(id),
+        provider VARCHAR(50) DEFAULT 'anthropic',
+        model VARCHAR(100),
+        api_key TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oc_api_quota (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES oc_users(id),
+        usage_date DATE DEFAULT CURRENT_DATE,
+        units INTEGER DEFAULT 0,
+        UNIQUE(user_id, usage_date)
+      );
+    `);
+
     // Website builder tables (shared module from openscaffold-core)
     const { createWebsiteSchema } = require(CORE_WEBSITE);
     await createWebsiteSchema(pool, 'oc_');
@@ -388,6 +455,10 @@ const analyticsRoutes = require('./routes/analytics')(pool, authMiddleware);
 const teamRoutes = require('./routes/team')(pool, authMiddleware);
 const equipmentRoutes = require('./routes/equipment')(pool, authMiddleware);
 const calendarRoutes = require('./routes/calendar')(pool, authMiddleware);
+const youtubeRoutes = require('./routes/youtube')(pool, authMiddleware, JWT_SECRET);
+const seriesRoutes = require('./routes/series')(pool, authMiddleware);
+const aiRoutes = require('./routes/ai')(pool, authMiddleware);
+const advisorRoutes = require('./routes/advisor')(pool, authMiddleware);
 
 app.use('/api/content', contentRoutes);
 app.use('/api/pipeline', pipelineRoutes);
@@ -399,6 +470,10 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/youtube', youtubeRoutes);
+app.use('/api/series', seriesRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/advisor', advisorRoutes);
 
 // Website builder (shared module from openscaffold-core)
 const { createWebsiteRoutes, createPublicSiteRouter } = require(CORE_WEBSITE);
@@ -418,11 +493,47 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Nightly channel sync — refreshes stats and records analytics snapshots
+// for every connected channel (runs 1 min after boot, then every 24h)
+async function nightlySync() {
+  try {
+    const ytSvc = require('./services/youtube');
+    const channels = await pool.query(`SELECT * FROM oc_channels WHERE connected = true`);
+    for (const channel of channels.rows) {
+      try {
+        const auth = ytSvc.clientForChannel(pool, channel);
+        const info = await ytSvc.fetchMyChannel(auth);
+        if (!info) continue;
+        await pool.query(
+          `UPDATE oc_channels SET channel_name = $1, subscriber_count = $2,
+             total_views = $3, video_count = $4, last_synced_at = NOW(), updated_at = NOW()
+           WHERE id = $5`,
+          [info.title, info.subscribers, info.views, info.videoCount, channel.id]
+        );
+        await pool.query(
+          `INSERT INTO oc_analytics_snapshots (user_id, channel_id, subscribers, total_views, data_json)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [channel.user_id, channel.id, info.subscribers, info.views,
+           JSON.stringify({ videoCount: info.videoCount, source: 'nightly' })]
+        );
+        await ytSvc.logQuota(pool, channel.user_id, ytSvc.QUOTA.channelsList);
+        console.log(`Nightly sync: ${info.title} ok`);
+      } catch (e) {
+        console.error(`Nightly sync failed for channel ${channel.id}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('Nightly sync error:', e.message);
+  }
+}
+
 // Initialize and start server
 initializeDatabase().then(() => {
   app.listen(PORT, () => {
     console.log(`Open Creator server running on port ${PORT}`);
   });
+  setTimeout(nightlySync, 60 * 1000);
+  setInterval(nightlySync, 24 * 60 * 60 * 1000);
 }).catch(err => {
   console.error('Database init warning:', err.message);
   // Start server anyway — DB may connect later

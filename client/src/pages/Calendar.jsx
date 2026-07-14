@@ -26,12 +26,26 @@ export default function Calendar() {
   const [formData, setFormData] = useState({
     title: '',
     event_type: 'upload',
-    event_date: ''
+    start_date: ''
   })
+  const [cadence, setCadence] = useState(null)
 
   useEffect(() => {
     fetchEvents()
+    fetchCadence()
   }, [])
+
+  const fetchCadence = async () => {
+    try {
+      const token = localStorage.getItem('oc_token')
+      const res = await fetch('/api/series/meta/cadence?weeks=4', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) setCadence(await res.json())
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   const fetchEvents = async () => {
     try {
@@ -66,9 +80,10 @@ export default function Calendar() {
       })
 
       if (res.ok) {
-        setFormData({ title: '', event_type: 'upload', event_date: '' })
+        setFormData({ title: '', event_type: 'upload', start_date: '' })
         setShowForm(false)
         fetchEvents()
+        fetchCadence()
       }
     } catch (err) {
       console.error(err)
@@ -88,7 +103,7 @@ export default function Calendar() {
       .toISOString()
       .split('T')[0]
     return events.filter(e => {
-      const eventDate = new Date(e.event_date).toISOString().split('T')[0]
+      const eventDate = new Date(e.start_date).toISOString().split('T')[0]
       return eventDate === dateStr
     })
   }
@@ -144,6 +159,33 @@ export default function Calendar() {
         </button>
       </div>
 
+      {/* Cadence status (from Series targets) */}
+      {cadence && cadence.weeklyTarget > 0 && (
+        <div className={`rounded-lg p-4 border ${cadence.weeks.some(w => w.gap > 0)
+          ? 'bg-yellow-900 bg-opacity-30 border-yellow-700'
+          : 'bg-green-900 bg-opacity-30 border-green-700'}`}>
+          <p className={`font-medium mb-2 ${cadence.weeks.some(w => w.gap > 0) ? 'text-yellow-200' : 'text-green-200'}`}>
+            Cadence target: {cadence.weeklyTarget}/week
+            {cadence.weeks.some(w => w.gap > 0)
+              ? ' — you have gaps coming up'
+              : ' — next 4 weeks are on track'}
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {cadence.weeks.map((w, i) => (
+              <div key={i} className={`rounded-lg px-3 py-2 text-xs ${w.gap > 0
+                ? 'bg-yellow-900 text-yellow-200 border border-yellow-800'
+                : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
+                <span className="font-semibold">
+                  {new Date(w.start + 'T12:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' })}
+                </span>
+                {' — '}{w.planned}/{Math.ceil(w.target)} planned
+                {w.gap > 0 && <span className="font-semibold"> · {w.gap} short</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Add Event Form */}
       {showForm && (
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
@@ -165,8 +207,8 @@ export default function Calendar() {
                 <label className="block text-sm font-medium text-slate-200 mb-2">Date</label>
                 <input
                   type="date"
-                  value={formData.event_date}
-                  onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   required
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-red-600 focus:outline-none"
                 />
@@ -273,7 +315,7 @@ export default function Calendar() {
           {events && events.length > 0 ? (
             <div className="divide-y divide-slate-700">
               {events
-                .sort((a, b) => new Date(a.event_date) - new Date(b.event_date))
+                .sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
                 .slice(0, 10)
                 .map((event) => (
                   <div key={event.id} className="p-4 hover:bg-slate-700 transition-colors flex items-center justify-between">
@@ -284,7 +326,7 @@ export default function Calendar() {
                       <div className="flex-1">
                         <p className="font-medium text-white">{event.title}</p>
                         <p className="text-sm text-slate-400">
-                          {new Date(event.event_date).toLocaleDateString('default', {
+                          {new Date(event.start_date).toLocaleDateString('default', {
                             weekday: 'long',
                             month: 'short',
                             day: 'numeric',

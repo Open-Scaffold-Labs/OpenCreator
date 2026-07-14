@@ -72,7 +72,7 @@ module.exports = (pool, authMiddleware) => {
   // PUT /api/content/:id - update content item
   router.put('/:id', authMiddleware, async (req, res) => {
     try {
-      const { title, channel_id, content_type, stage_id, description, script, tags, status, scheduled_date, published_date, thumbnail_url, youtube_url, youtube_video_id } = req.body;
+      const { title, channel_id, content_type, stage_id, description, script, tags, status, scheduled_date, published_date, thumbnail_url, youtube_url, youtube_video_id, brief } = req.body;
 
       const result = await pool.query(
         `UPDATE oc_content
@@ -89,10 +89,11 @@ module.exports = (pool, authMiddleware) => {
              thumbnail_url = COALESCE($11, thumbnail_url),
              youtube_url = COALESCE($12, youtube_url),
              youtube_video_id = COALESCE($13, youtube_video_id),
+             brief = COALESCE($14, brief),
              updated_at = NOW()
-         WHERE id = $14 AND user_id = $15
+         WHERE id = $15 AND user_id = $16
          RETURNING *`,
-        [title, channel_id, content_type, stage_id, description, script, tags, status, scheduled_date, published_date, thumbnail_url, youtube_url, youtube_video_id, req.params.id, req.user.id]
+        [title, channel_id, content_type, stage_id, description, script, tags, status, scheduled_date, published_date, thumbnail_url, youtube_url, youtube_video_id, brief ? JSON.stringify(brief) : null, req.params.id, req.user.id]
       );
 
       if (result.rows.length === 0) {
@@ -121,6 +122,82 @@ module.exports = (pool, authMiddleware) => {
       res.json({ message: 'Content deleted successfully' });
     } catch (error) {
       console.error('Error deleting content:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Production checklist (oc_tasks) ---
+
+  // GET /api/content/:id/tasks
+  router.get('/:id/tasks', authMiddleware, async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT * FROM oc_tasks WHERE content_id = $1 AND user_id = $2
+         ORDER BY sort_order ASC, id ASC`,
+        [req.params.id, req.user.id]
+      );
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/content/:id/tasks
+  router.post('/:id/tasks', authMiddleware, async (req, res) => {
+    try {
+      const { title, due_date } = req.body;
+      if (!title) return res.status(400).json({ error: 'Title is required' });
+      const owns = await pool.query(
+        `SELECT id FROM oc_content WHERE id = $1 AND user_id = $2`,
+        [req.params.id, req.user.id]
+      );
+      if (!owns.rows.length) return res.status(404).json({ error: 'Content not found' });
+      const result = await pool.query(
+        `INSERT INTO oc_tasks (content_id, user_id, title, due_date, sort_order)
+         VALUES ($1, $2, $3, $4,
+                 (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM oc_tasks WHERE content_id = $1))
+         RETURNING *`,
+        [req.params.id, req.user.id, title, due_date || null]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PUT /api/content/tasks/:taskId — toggle/update a checklist item
+  router.put('/tasks/:taskId', authMiddleware, async (req, res) => {
+    try {
+      const { title, status, due_date } = req.body;
+      const result = await pool.query(
+        `UPDATE oc_tasks SET
+           title = COALESCE($1, title),
+           status = COALESCE($2, status),
+           due_date = COALESCE($3, due_date),
+           completed_at = CASE WHEN $2 = 'done' THEN NOW()
+                               WHEN $2 = 'pending' THEN NULL
+                               ELSE completed_at END
+         WHERE id = $4 AND user_id = $5
+         RETURNING *`,
+        [title, status, due_date, req.params.taskId, req.user.id]
+      );
+      if (!result.rows.length) return res.status(404).json({ error: 'Task not found' });
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/content/tasks/:taskId
+  router.delete('/tasks/:taskId', authMiddleware, async (req, res) => {
+    try {
+      const result = await pool.query(
+        `DELETE FROM oc_tasks WHERE id = $1 AND user_id = $2 RETURNING id`,
+        [req.params.taskId, req.user.id]
+      );
+      if (!result.rows.length) return res.status(404).json({ error: 'Task not found' });
+      res.json({ ok: true });
+    } catch (error) {
       res.status(500).json({ error: error.message });
     }
   });

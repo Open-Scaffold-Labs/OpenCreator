@@ -151,7 +151,7 @@ export default function Beacon() {
       {/* ── Chat Panel ── */}
       <div className={`fixed bottom-6 right-6 z-50 transition-all duration-300 origin-bottom-right ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0 pointer-events-none'}`}>
         <div className="w-[380px] h-[540px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-          style={{ boxShadow: `0 25px 60px -15px ${c.ring}0.25), 0 0 40px -10px ${c.ring}0.15)` }}>
+          style={{ boxShadow: '0 25px 60px -15px rgba(139, 92, 246, 0.25), 0 0 40px -10px rgba(139, 92, 246, 0.15)' }}>
 
           {/* Header */}
           <div className="relative px-5 py-4 flex items-center justify-between flex-shrink-0 border-b border-gray-100">

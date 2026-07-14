@@ -4,6 +4,8 @@ import LoginScreen from './components/LoginScreen'
 import Dashboard from './pages/Dashboard'
 import Website from './pages/Website'
 import Pipeline from './pages/Pipeline'
+import Series from './pages/Series'
+import ShowDetail from './pages/ShowDetail'
 import Analytics from './pages/Analytics'
 import Finances from './pages/Finances'
 import Brands from './pages/Brands'
@@ -22,6 +24,8 @@ const PAGE_REGISTRY = {
   dashboard: Dashboard,
   website: Website,
   pipeline: Pipeline,
+  series: Series,
+  show: ShowDetail,
   analytics: Analytics,
   finances: Finances,
   brands: Brands,
@@ -56,6 +60,13 @@ export default function App() {
   const [page, setPage] = useState('dashboard')
   const [pageData, setPageData] = useState({})
   const [loading, setLoading] = useState(true)
+
+  // Land on Settings when returning from the YouTube OAuth redirect
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('youtube')) {
+      setPage('settings')
+    }
+  }, [])
 
   // Auth check on mount
   useEffect(() => {
