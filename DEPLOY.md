@@ -1,19 +1,28 @@
-# Deploying OpenCreator (Vercel client + Railway backend)
+# Deploying OpenCreator (Vercel client + Railway backend + Supabase Postgres)
 
 The client is a static Vite build (Vercel); the server is a long-running
-Express process with Postgres and a nightly sync worker (Railway — Render or
-Fly also work). All `/api/*` traffic is proxied through Vercel to the backend
-via the rewrite in `client/vercel.json`, so the browser only ever talks to
-your Vercel domain.
+Express process with a nightly sync worker (Railway — Render or Fly also
+work); the database is Supabase Postgres. All `/api/*` traffic is proxied
+through Vercel to the backend via the rewrite in `client/vercel.json`, so
+the browser only ever talks to your Vercel domain.
+
+## 0. Database on Supabase
+
+1. supabase.com → New project. Pick a region close to your Railway region.
+2. Project Settings → Database → **Connection string**. For a persistent
+   server use the **Session pooler** URI (port 5432); paste your database
+   password into it.
+3. That URI becomes `DATABASE_URL` on Railway below. The app creates all
+   its `oc_` tables automatically on first boot (SSL is auto-enabled for
+   non-localhost databases).
 
 ## 1. Backend on Railway
 
 1. railway.com → New Project → **Deploy from GitHub repo** → pick
    `Open-Scaffold-Labs/OpenCreator`.
 2. In the service settings set **Root Directory** to `server`.
-3. Add a **PostgreSQL** database to the project (Railway provisions
-   `DATABASE_URL` automatically — link it to the service).
-4. Set service variables:
+3. Set `DATABASE_URL` to the Supabase connection string from step 0.
+4. Set the remaining service variables:
    - `JWT_SECRET` — long random string (`openssl rand -hex 32`)
    - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — same as local
    - `GOOGLE_REDIRECT_URI` — `https://<railway-domain>/api/youtube/callback`

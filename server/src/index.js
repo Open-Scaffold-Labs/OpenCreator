@@ -11,9 +11,11 @@ const bcrypt = require('bcryptjs');
 // Resolve openscaffold-core relative to THIS file's location (not cwd)
 const CORE_WEBSITE = path.join(__dirname, '..', '..', '..', 'openscaffold-core', 'src', 'server', 'website');
 
-// Database connection
+// Database connection — SSL for hosted Postgres (Supabase etc.), plain for localhost
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost:5432/openfirehouse';
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/openfirehouse'
+  connectionString: DATABASE_URL,
+  ssl: /localhost|127\.0\.0\.1/.test(DATABASE_URL) ? false : { rejectUnauthorized: false }
 });
 
 const app = express();
