@@ -274,6 +274,33 @@ async function initializeDatabase() {
       );
     `);
 
+    // --- YouTube integration (feature/youtube-connect) ---
+    await pool.query(`
+      ALTER TABLE oc_channels
+        ADD COLUMN IF NOT EXISTS access_token TEXT,
+        ADD COLUMN IF NOT EXISTS refresh_token TEXT,
+        ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS uploads_playlist_id VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS connected BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP;
+    `);
+
+    await pool.query(`
+      ALTER TABLE oc_content
+        ADD COLUMN IF NOT EXISTS view_count BIGINT,
+        ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oc_api_quota (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES oc_users(id),
+        usage_date DATE DEFAULT CURRENT_DATE,
+        units INTEGER DEFAULT 0,
+        UNIQUE(user_id, usage_date)
+      );
+    `);
+
     // Website builder tables (shared module from openscaffold-core)
     const { createWebsiteSchema } = require(CORE_WEBSITE);
     await createWebsiteSchema(pool, 'oc_');
@@ -388,6 +415,7 @@ const analyticsRoutes = require('./routes/analytics')(pool, authMiddleware);
 const teamRoutes = require('./routes/team')(pool, authMiddleware);
 const equipmentRoutes = require('./routes/equipment')(pool, authMiddleware);
 const calendarRoutes = require('./routes/calendar')(pool, authMiddleware);
+const youtubeRoutes = require('./routes/youtube')(pool, authMiddleware, JWT_SECRET);
 
 app.use('/api/content', contentRoutes);
 app.use('/api/pipeline', pipelineRoutes);
@@ -399,6 +427,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/youtube', youtubeRoutes);
 
 // Website builder (shared module from openscaffold-core)
 const { createWebsiteRoutes, createPublicSiteRouter } = require(CORE_WEBSITE);

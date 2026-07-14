@@ -57,6 +57,13 @@ export default function App() {
   const [pageData, setPageData] = useState({})
   const [loading, setLoading] = useState(true)
 
+  // Land on Settings when returning from the YouTube OAuth redirect
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('youtube')) {
+      setPage('settings')
+    }
+  }, [])
+
   // Auth check on mount
   useEffect(() => {
     const checkAuth = async () => {
