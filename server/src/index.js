@@ -1,6 +1,6 @@
-require('dotenv').config();
-
 const path = require('path');
+// Load .env from server/ regardless of the process working directory
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
