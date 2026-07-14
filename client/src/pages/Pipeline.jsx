@@ -146,7 +146,7 @@ export default function Pipeline({ navigateTo }) {
     try {
       const token = localStorage.getItem('oc_token')
       const res = await fetch(`/api/content/${contentId}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -361,7 +361,10 @@ export default function Pipeline({ navigateTo }) {
                   return (
                     <div key={item.id} className="bg-slate-700 border border-slate-600 rounded-lg p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-medium text-white text-sm flex-1">{item.title}</h4>
+                        <button onClick={() => navigateTo('show', { id: item.id })}
+                          className="font-medium text-white text-sm flex-1 text-left hover:text-red-400 transition-colors">
+                          {item.title}
+                        </button>
                         <span className={`${contentType.bg} ${contentType.text} text-xs px-2 py-1 rounded whitespace-nowrap`}>
                           {contentType.label}
                         </span>

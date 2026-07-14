@@ -314,7 +314,8 @@ async function initializeDatabase() {
     await pool.query(`
       ALTER TABLE oc_content
         ADD COLUMN IF NOT EXISTS series_id INTEGER REFERENCES oc_series(id),
-        ADD COLUMN IF NOT EXISTS episode_number INTEGER;
+        ADD COLUMN IF NOT EXISTS episode_number INTEGER,
+        ADD COLUMN IF NOT EXISTS brief JSONB DEFAULT '{}';
     `);
 
     await pool.query(`

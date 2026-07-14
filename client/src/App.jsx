@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Website from './pages/Website'
 import Pipeline from './pages/Pipeline'
 import Series from './pages/Series'
+import ShowDetail from './pages/ShowDetail'
 import Analytics from './pages/Analytics'
 import Finances from './pages/Finances'
 import Brands from './pages/Brands'
@@ -24,6 +25,7 @@ const PAGE_REGISTRY = {
   website: Website,
   pipeline: Pipeline,
   series: Series,
+  show: ShowDetail,
   analytics: Analytics,
   finances: Finances,
   brands: Brands,
