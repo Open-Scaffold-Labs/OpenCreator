@@ -8,7 +8,6 @@
     "dev": "nodemon src/index.js"
   },
   "dependencies": {
-    "@openscaffold/core": "file:../../openscaffold-core",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",

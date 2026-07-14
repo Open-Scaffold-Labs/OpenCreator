@@ -10,8 +10,7 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "lucide-react": "^0.383.0",
-    "@openscaffold/core": "file:../../openscaffold-core"
+    "lucide-react": "^0.383.0"
   },
   "devDependencies": {
     "vite": "^6.0.0",

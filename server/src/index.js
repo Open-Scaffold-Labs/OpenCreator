@@ -17,13 +17,23 @@ const pool = new Pool({
 });
 
 const app = express();
-const PORT = 3012;
+const PORT = process.env.PORT || 3012;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// openscaffold-core is optional: present in local Open Scaffold ecosystem
+// installs, absent in standalone/cloud deployments (website builder off).
+let coreWebsite = null;
+try {
+  coreWebsite = require(CORE_WEBSITE);
+  console.log('openscaffold-core found — website builder enabled');
+} catch (e) {
+  console.log('openscaffold-core not found — website builder disabled (standalone mode)');
+}
 
 // Middleware
 app.use(express.json());
 app.use(cors({
-  origin: 'http://localhost:5180',
+  origin: [process.env.CLIENT_URL || 'http://localhost:5180', 'http://localhost:5180'],
   credentials: true
 }));
 app.use(cookieParser());
@@ -341,11 +351,12 @@ async function initializeDatabase() {
       );
     `);
 
-    // Website builder tables (shared module from openscaffold-core)
-    const { createWebsiteSchema } = require(CORE_WEBSITE);
-    await createWebsiteSchema(pool, 'oc_');
+    // Website builder tables (shared module from openscaffold-core, optional)
+    if (coreWebsite) {
+      await coreWebsite.createWebsiteSchema(pool, 'oc_');
+    }
 
-    console.log('Database schema initialized successfully (including website builder)');
+    console.log(`Database schema initialized successfully${coreWebsite ? ' (including website builder)' : ''}`);
   } catch (error) {
     console.error('Error initializing database:', error);
     throw error;
@@ -475,12 +486,14 @@ app.use('/api/series', seriesRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/advisor', advisorRoutes);
 
-// Website builder (shared module from openscaffold-core)
-const { createWebsiteRoutes, createPublicSiteRouter } = require(CORE_WEBSITE);
-app.use('/api/website', createWebsiteRoutes(pool, authMiddleware, 'oc_'));
-
-// Public-facing website (server-rendered HTML, no auth required)
-app.use('/site', createPublicSiteRouter(pool, 'oc_'));
+// Website builder (shared module from openscaffold-core, optional)
+if (coreWebsite) {
+  app.use('/api/website', coreWebsite.createWebsiteRoutes(pool, authMiddleware, 'oc_'));
+  // Public-facing website (server-rendered HTML, no auth required)
+  app.use('/site', coreWebsite.createPublicSiteRouter(pool, 'oc_'));
+} else {
+  app.use('/api/website', (req, res) => res.status(501).json({ error: 'Website builder requires the Open Scaffold ecosystem (openscaffold-core)' }));
+}
 
 // Health check
 app.get('/api/health', (req, res) => {
