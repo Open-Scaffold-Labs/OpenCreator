@@ -61,13 +61,39 @@ Use Electric Indigo (#4F46E5) title block, Times New Roman 11pt, justified text,
 ```
 OpenCreator/
 ├── client/
-│   ├── src/components/
+│   ├── src/components/        # Layout, Beacon, LoginScreen, StandardHeader
+│   ├── src/pages/             # Dashboard, Pipeline, Series, ShowDetail,
+│   │                          # Calendar, Settings, Analytics, business pages
 │   ├── index.html
-│   ├── package.json
+│   ├── package.json           # install with --legacy-peer-deps --include=dev
 │   └── vite.config.js
 ├── server/
-│   ├── src/routes/
-│   ├── src/index.js
+│   ├── src/routes/            # content, series, youtube, ai, advisor, ...
+│   ├── src/services/          # youtube.js (OAuth/Data/Analytics APIs, AES
+│   │                          # token encryption), ai.js (BYO-key providers)
+│   ├── src/index.js           # schema migrations + nightly sync worker
+│   ├── .env.example           # Google OAuth + AI config template
 │   └── package.json
 └── CLAUDE.md
 ```
+
+### Key Features & Endpoints (added July 2026)
+- **YouTube integration**: `/api/youtube/*` — OAuth connect (read + upload
+  scopes), video import sync, publish/schedule uploads, per-video analytics
+  reports, quota ledger (`oc_api_quota`, ~1,600 units/upload of 10k/day)
+- **Series & cadence**: `/api/series/*` — recurring show templates,
+  next-episode generator, `/api/series/meta/cadence` gap detection
+- **Show briefs**: `brief` JSONB on `oc_content` (concept, target_viewer,
+  promise, hook, outline[]); checklist via `/api/content/:id/tasks`
+- **AI drafting**: `/api/ai/*` — BYO key (Anthropic/OpenAI) stored encrypted
+  in `oc_ai_settings`; draft kinds: titles, hook, outline, description
+- **Advisor**: `/api/advisor/:contentId` — pre-publish packaging/retention
+  checks + length guidance (personalized when >=5 published videos)
+- Nightly sync worker refreshes channel stats + snapshots every 24h
+
+### Environment
+`server/.env` (see `.env.example`): DATABASE_URL, JWT_SECRET,
+GOOGLE_CLIENT_ID/SECRET, GOOGLE_REDIRECT_URI, CLIENT_URL.
+Google Cloud project needs YouTube Data API v3 + YouTube Analytics API
+enabled and an OAuth web client with redirect
+`http://localhost:3012/api/youtube/callback`.
