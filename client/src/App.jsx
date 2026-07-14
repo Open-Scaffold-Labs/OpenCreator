@@ -4,6 +4,7 @@ import LoginScreen from './components/LoginScreen'
 import Dashboard from './pages/Dashboard'
 import Website from './pages/Website'
 import Pipeline from './pages/Pipeline'
+import Series from './pages/Series'
 import Analytics from './pages/Analytics'
 import Finances from './pages/Finances'
 import Brands from './pages/Brands'
@@ -22,6 +23,7 @@ const PAGE_REGISTRY = {
   dashboard: Dashboard,
   website: Website,
   pipeline: Pipeline,
+  series: Series,
   analytics: Analytics,
   finances: Finances,
   brands: Brands,

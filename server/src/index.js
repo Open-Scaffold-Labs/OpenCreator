@@ -291,6 +291,32 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;
     `);
 
+    // --- Series / Show Calendar (feature/show-calendar) ---
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oc_series (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES oc_users(id),
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        content_type VARCHAR(50) DEFAULT 'video',
+        cadence_per_week NUMERIC(4,2) DEFAULT 1,
+        day_of_week INTEGER,
+        title_template VARCHAR(500),
+        description_template TEXT,
+        tags_template TEXT,
+        target_duration_seconds INTEGER,
+        next_episode_number INTEGER DEFAULT 1,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      ALTER TABLE oc_content
+        ADD COLUMN IF NOT EXISTS series_id INTEGER REFERENCES oc_series(id),
+        ADD COLUMN IF NOT EXISTS episode_number INTEGER;
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS oc_api_quota (
         id SERIAL PRIMARY KEY,
@@ -416,6 +442,7 @@ const teamRoutes = require('./routes/team')(pool, authMiddleware);
 const equipmentRoutes = require('./routes/equipment')(pool, authMiddleware);
 const calendarRoutes = require('./routes/calendar')(pool, authMiddleware);
 const youtubeRoutes = require('./routes/youtube')(pool, authMiddleware, JWT_SECRET);
+const seriesRoutes = require('./routes/series')(pool, authMiddleware);
 
 app.use('/api/content', contentRoutes);
 app.use('/api/pipeline', pipelineRoutes);
@@ -428,6 +455,7 @@ app.use('/api/team', teamRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/youtube', youtubeRoutes);
+app.use('/api/series', seriesRoutes);
 
 // Website builder (shared module from openscaffold-core)
 const { createWebsiteRoutes, createPublicSiteRouter } = require(CORE_WEBSITE);

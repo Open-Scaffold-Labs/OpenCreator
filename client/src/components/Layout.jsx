@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   Mail,
   Kanban,
+  Clapperboard,
   CalendarDays,
   DollarSign,
   Building2,
@@ -40,6 +41,7 @@ const NAVIGATION = [
     group: 'Content',
     items: [
       { id: 'pipeline', label: 'Pipeline', icon: Kanban },
+      { id: 'series', label: 'Series', icon: Clapperboard },
       { id: 'calendar', label: 'Calendar', icon: CalendarDays }
     ]
   },
