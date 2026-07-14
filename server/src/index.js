@@ -476,11 +476,47 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Nightly channel sync — refreshes stats and records analytics snapshots
+// for every connected channel (runs 1 min after boot, then every 24h)
+async function nightlySync() {
+  try {
+    const ytSvc = require('./services/youtube');
+    const channels = await pool.query(`SELECT * FROM oc_channels WHERE connected = true`);
+    for (const channel of channels.rows) {
+      try {
+        const auth = ytSvc.clientForChannel(pool, channel);
+        const info = await ytSvc.fetchMyChannel(auth);
+        if (!info) continue;
+        await pool.query(
+          `UPDATE oc_channels SET channel_name = $1, subscriber_count = $2,
+             total_views = $3, video_count = $4, last_synced_at = NOW(), updated_at = NOW()
+           WHERE id = $5`,
+          [info.title, info.subscribers, info.views, info.videoCount, channel.id]
+        );
+        await pool.query(
+          `INSERT INTO oc_analytics_snapshots (user_id, channel_id, subscribers, total_views, data_json)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [channel.user_id, channel.id, info.subscribers, info.views,
+           JSON.stringify({ videoCount: info.videoCount, source: 'nightly' })]
+        );
+        await ytSvc.logQuota(pool, channel.user_id, ytSvc.QUOTA.channelsList);
+        console.log(`Nightly sync: ${info.title} ok`);
+      } catch (e) {
+        console.error(`Nightly sync failed for channel ${channel.id}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('Nightly sync error:', e.message);
+  }
+}
+
 // Initialize and start server
 initializeDatabase().then(() => {
   app.listen(PORT, () => {
     console.log(`Open Creator server running on port ${PORT}`);
   });
+  setTimeout(nightlySync, 60 * 1000);
+  setInterval(nightlySync, 24 * 60 * 60 * 1000);
 }).catch(err => {
   console.error('Database init warning:', err.message);
   // Start server anyway — DB may connect later

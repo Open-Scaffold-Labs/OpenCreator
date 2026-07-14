@@ -9,6 +9,8 @@ export default function ShowDetail({ pageData, navigateTo }) {
   const [message, setMessage] = useState(null)
   const [newTask, setNewTask] = useState('')
   const [brief, setBrief] = useState({ concept: '', target_viewer: '', promise: '', hook: '', outline: '' })
+  const [report, setReport] = useState(null)
+  const [reportErr, setReportErr] = useState(null)
   const [script, setScript] = useState('')
   const [meta, setMeta] = useState({ title: '', description: '', tags: '' })
 
@@ -41,6 +43,21 @@ export default function ShowDetail({ pageData, navigateTo }) {
       setLoading(false)
     }
   }
+
+  const loadReport = async (contentId) => {
+    try {
+      const res = await fetch(`/api/youtube/report/${contentId}`, { headers: authHeaders() })
+      const data = await res.json()
+      if (res.ok) setReport(data)
+      else setReportErr(data.error)
+    } catch (err) {
+      setReportErr(err.message)
+    }
+  }
+
+  useEffect(() => {
+    if (item?.youtube_video_id) loadReport(item.id)
+  }, [item?.youtube_video_id])
 
   useEffect(() => { load() }, [pageData?.id])
 
@@ -158,6 +175,54 @@ export default function ShowDetail({ pageData, navigateTo }) {
           ? 'bg-green-900 border border-green-700 text-green-200'
           : 'bg-red-900 border border-red-700 text-red-200'}`}>
           {message.text}
+        </div>
+      )}
+
+      {/* Performance (only for shows on YouTube) */}
+      {item.youtube_video_id && (
+        <div className={card}>
+          <h2 className="text-lg font-bold text-white">Performance</h2>
+          {report?.metrics ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  ['Views', report.metrics.views],
+                  ['Watch time (min)', report.metrics.estimatedMinutesWatched],
+                  ['Avg view duration', report.metrics.averageViewDuration != null ? `${Math.round(report.metrics.averageViewDuration)}s` : '—'],
+                  ['Avg % viewed', report.metrics.averageViewPercentage != null ? `${report.metrics.averageViewPercentage.toFixed(1)}%` : '—']
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                    <p className="text-xs text-slate-400">{k}</p>
+                    <p className="text-xl font-bold text-white">{v ?? '—'}</p>
+                  </div>
+                ))}
+              </div>
+              {report.retention && report.retention.length > 1 ? (
+                <div>
+                  <p className="text-sm font-medium text-slate-200 mb-2">
+                    Retention curve <span className="text-slate-400">— watch the first 30 seconds</span>
+                  </p>
+                  <div className="flex items-end gap-px h-24 bg-slate-900 border border-slate-700 rounded-lg p-2">
+                    {report.retention.map((p, i) => (
+                      <div key={i}
+                        className="flex-1 bg-red-600 rounded-t"
+                        style={{ height: `${Math.min(100, p.watchRatio * 100)}%` }}
+                        title={`${Math.round(p.position * 100)}% in: ${(p.watchRatio * 100).toFixed(0)}% watching`} />
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-500 mt-1">
+                    <span>Start</span><span>End</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">Retention curve not available yet — YouTube needs more views before it reports this.</p>
+              )}
+            </>
+          ) : reportErr ? (
+            <p className="text-sm text-slate-400">No analytics yet: {reportErr}</p>
+          ) : (
+            <p className="text-sm text-slate-400">Loading analytics…</p>
+          )}
         </div>
       )}
 

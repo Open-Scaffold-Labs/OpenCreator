@@ -325,6 +325,42 @@ module.exports = (pool, authMiddleware, JWT_SECRET) => {
       }
     });
 
+  // GET /api/youtube/report/:contentId — per-video performance + retention curve
+  router.get('/report/:contentId', authMiddleware, async (req, res) => {
+    try {
+      const cRes = await pool.query(
+        `SELECT * FROM oc_content WHERE id = $1 AND user_id = $2`,
+        [req.params.contentId, req.user.id]
+      );
+      if (!cRes.rows.length) return res.status(404).json({ error: 'Content not found' });
+      const item = cRes.rows[0];
+      if (!item.youtube_video_id) return res.status(400).json({ error: 'Not on YouTube yet' });
+
+      const chRes = await pool.query(
+        `SELECT * FROM oc_channels WHERE user_id = $1 AND connected = true ORDER BY id LIMIT 1`,
+        [req.user.id]
+      );
+      if (!chRes.rows.length) return res.status(400).json({ error: 'No connected YouTube channel' });
+      const auth = yt.clientForChannel(pool, chRes.rows[0]);
+
+      const [metrics, curve] = await Promise.all([
+        yt.fetchVideoAnalytics(auth, item.youtube_video_id, item.published_date),
+        yt.fetchRetentionCurve(auth, item.youtube_video_id, item.published_date)
+      ]);
+
+      res.json({
+        videoId: item.youtube_video_id,
+        title: item.title,
+        durationSeconds: item.duration_seconds,
+        metrics,
+        retention: curve
+      });
+    } catch (e) {
+      console.error('Report error:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // DELETE /api/youtube/disconnect — drop tokens, keep imported data
   router.delete('/disconnect', authMiddleware, async (req, res) => {
     try {

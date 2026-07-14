@@ -209,9 +209,45 @@ async function setThumbnail(auth, videoId, filePath, mimeType) {
   return res.data;
 }
 
+// --- YouTube Analytics API (separate quota from the Data API) ---
+function fmtDate(d) { return d.toISOString().slice(0, 10); }
+
+async function fetchVideoAnalytics(auth, videoId, publishedAt) {
+  const ya = google.youtubeAnalytics({ version: 'v2', auth });
+  const start = publishedAt ? new Date(publishedAt) : new Date(Date.now() - 90 * 86400000);
+  const res = await ya.reports.query({
+    ids: 'channel==MINE',
+    startDate: fmtDate(start),
+    endDate: fmtDate(new Date()),
+    metrics: 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,subscribersGained',
+    filters: `video==${videoId}`
+  });
+  const row = (res.data.rows || [])[0];
+  if (!row) return null;
+  const cols = res.data.columnHeaders.map(h => h.name);
+  const out = {};
+  cols.forEach((c, i) => { out[c] = row[i]; });
+  return out;
+}
+
+async function fetchRetentionCurve(auth, videoId, publishedAt) {
+  const ya = google.youtubeAnalytics({ version: 'v2', auth });
+  const start = publishedAt ? new Date(publishedAt) : new Date(Date.now() - 90 * 86400000);
+  const res = await ya.reports.query({
+    ids: 'channel==MINE',
+    startDate: fmtDate(start),
+    endDate: fmtDate(new Date()),
+    metrics: 'audienceWatchRatio',
+    dimensions: 'elapsedVideoTimeRatio',
+    filters: `video==${videoId}`
+  });
+  return (res.data.rows || []).map(r => ({ position: r[0], watchRatio: r[1] }));
+}
+
 module.exports = {
   SCOPES, QUOTA,
   uploadVideo, setThumbnail,
+  fetchVideoAnalytics, fetchRetentionCurve,
   encrypt, decrypt,
   getAuthUrl, exchangeCode, clientForChannel,
   logQuota, quotaToday,
