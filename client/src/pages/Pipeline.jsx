@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Loader, AlertCircle, ChevronRight, ChevronLeft } from 'lucide-react'
+import { Plus, Loader, AlertCircle, ChevronRight, ChevronLeft, UploadCloud, ExternalLink, X } from 'lucide-react'
 
 const CONTENT_TYPES = {
   video: { label: 'Video', bg: 'bg-red-900', text: 'text-red-200' },
@@ -15,6 +15,59 @@ export default function Pipeline({ navigateTo }) {
   const [error, setError] = useState(null)
   const [showNewForm, setShowNewForm] = useState(false)
   const [newContent, setNewContent] = useState({ title: '', type: 'video', stage_id: null })
+  const [uploadItem, setUploadItem] = useState(null)
+  const [uploadForm, setUploadForm] = useState({ video: null, thumbnail: null, mode: 'schedule', publish_at: '' })
+  const [uploading, setUploading] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState(null)
+
+  const openUpload = (item) => {
+    setUploadItem(item)
+    setUploadMsg(null)
+    setUploadForm({
+      video: null,
+      thumbnail: null,
+      mode: item.scheduled_date && new Date(item.scheduled_date) > new Date() ? 'schedule' : 'now',
+      publish_at: item.scheduled_date ? new Date(item.scheduled_date).toISOString().slice(0, 16) : ''
+    })
+  }
+
+  const submitUpload = async (e) => {
+    e.preventDefault()
+    if (!uploadForm.video) { setUploadMsg({ type: 'error', text: 'Choose a video file' }); return }
+    setUploading(true)
+    setUploadMsg(null)
+    try {
+      const fd = new FormData()
+      fd.append('video', uploadForm.video)
+      if (uploadForm.thumbnail) fd.append('thumbnail', uploadForm.thumbnail)
+      fd.append('publish_mode', uploadForm.mode)
+      if (uploadForm.mode === 'schedule' && uploadForm.publish_at) {
+        fd.append('publish_at', new Date(uploadForm.publish_at).toISOString())
+      }
+      const token = localStorage.getItem('oc_token')
+      const res = await fetch(`/api/youtube/publish/${uploadItem.id}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setUploadMsg({
+          type: 'success',
+          text: data.mode === 'now'
+            ? 'Published! It may take a minute to process.'
+            : `Scheduled for ${new Date(data.publishAt).toLocaleString()}.`
+        })
+        fetchData()
+      } else {
+        setUploadMsg({ type: 'error', text: data.error || 'Upload failed' })
+      }
+    } catch (err) {
+      setUploadMsg({ type: 'error', text: err.message })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   useEffect(() => {
     fetchData()
@@ -212,6 +265,77 @@ export default function Pipeline({ navigateTo }) {
         </div>
       )}
 
+      {/* Upload to YouTube Modal */}
+      {uploadItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 w-full max-w-lg space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Upload to YouTube</h3>
+                <p className="text-sm text-slate-400">{uploadItem.title}</p>
+              </div>
+              <button onClick={() => setUploadItem(null)} className="text-slate-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+
+            {uploadMsg && (
+              <div className={`rounded-lg p-3 text-sm ${uploadMsg.type === 'success'
+                ? 'bg-green-900 border border-green-700 text-green-200'
+                : 'bg-red-900 border border-red-700 text-red-200'}`}>
+                {uploadMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={submitUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2">Video file *</label>
+                <input type="file" accept="video/*" disabled={uploading}
+                  onChange={e => setUploadForm({ ...uploadForm, video: e.target.files[0] })}
+                  className="w-full text-sm text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-red-600 file:text-white hover:file:bg-red-700 file:cursor-pointer" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2">Thumbnail (optional, JPG/PNG)</label>
+                <input type="file" accept="image/jpeg,image/png" disabled={uploading}
+                  onChange={e => setUploadForm({ ...uploadForm, thumbnail: e.target.files[0] })}
+                  className="w-full text-sm text-slate-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-600 file:text-white hover:file:bg-slate-500 file:cursor-pointer" />
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-slate-200 text-sm cursor-pointer">
+                  <input type="radio" name="mode" checked={uploadForm.mode === 'schedule'} disabled={uploading}
+                    onChange={() => setUploadForm({ ...uploadForm, mode: 'schedule' })}
+                    className="accent-red-600" />
+                  Schedule publish
+                </label>
+                {uploadForm.mode === 'schedule' && (
+                  <input type="datetime-local" value={uploadForm.publish_at} disabled={uploading}
+                    onChange={e => setUploadForm({ ...uploadForm, publish_at: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-red-600 focus:outline-none ml-6 max-w-xs" />
+                )}
+                <label className="flex items-center gap-2 text-slate-200 text-sm cursor-pointer">
+                  <input type="radio" name="mode" checked={uploadForm.mode === 'now'} disabled={uploading}
+                    onChange={() => setUploadForm({ ...uploadForm, mode: 'now' })}
+                    className="accent-red-600" />
+                  Publish immediately (public)
+                </label>
+              </div>
+              <p className="text-xs text-slate-500">Each upload uses ~1,600 of your 10,000 daily API quota units.</p>
+              <div className="flex gap-3 justify-end">
+                <button type="button" onClick={() => setUploadItem(null)} disabled={uploading}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors">
+                  Close
+                </button>
+                <button type="submit" disabled={uploading}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors font-medium">
+                  {uploading ? <Loader size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                  {uploading ? 'Uploading…' : uploadForm.mode === 'now' ? 'Upload & Publish' : 'Upload & Schedule'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Pipeline Columns */}
       <div className="flex gap-6 overflow-x-auto pb-4">
         {stages.map((stage) => (
@@ -246,6 +370,19 @@ export default function Pipeline({ navigateTo }) {
                         <p className="text-xs text-slate-400">
                           {new Date(item.scheduled_date).toLocaleDateString()}
                         </p>
+                      )}
+                      {item.youtube_url ? (
+                        <a href={item.youtube_url} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300">
+                          <ExternalLink size={12} />
+                          {item.status === 'scheduled' ? 'Scheduled on YouTube' : 'On YouTube'}
+                        </a>
+                      ) : (item.content_type === 'video' || item.content_type === 'short') && (
+                        <button onClick={() => openUpload(item)}
+                          className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300">
+                          <UploadCloud size={12} />
+                          Upload to YouTube
+                        </button>
                       )}
                       <div className="flex gap-2 pt-2">
                         <button

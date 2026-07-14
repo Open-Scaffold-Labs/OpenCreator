@@ -1,7 +1,17 @@
-// YouTube connect/sync routes — Sprint 1 of the implementation plan.
+// YouTube connect/sync/publish routes — Sprints 1 & 3 of the implementation plan.
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const yt = require('../services/youtube');
+
+const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 128 * 1024 * 1024 * 1024 } // YouTube's own max is 256GB/12h
+});
 
 module.exports = (pool, authMiddleware, JWT_SECRET) => {
   const router = express.Router();
@@ -212,6 +222,108 @@ module.exports = (pool, authMiddleware, JWT_SECRET) => {
       res.status(500).json({ error: e.message });
     }
   });
+
+  // POST /api/youtube/publish/:contentId — upload a pipeline item to YouTube.
+  // multipart form: video (file, required), thumbnail (file, optional),
+  // publish_mode ('now' | 'schedule'), publish_at (ISO, optional override)
+  router.post('/publish/:contentId',
+    authMiddleware,
+    upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]),
+    async (req, res) => {
+      const files = req.files || {};
+      const videoFile = files.video && files.video[0];
+      const thumbFile = files.thumbnail && files.thumbnail[0];
+      const cleanup = () => {
+        for (const f of [videoFile, thumbFile]) {
+          if (f) fs.unlink(f.path, () => {});
+        }
+      };
+      try {
+        if (!videoFile) return res.status(400).json({ error: 'No video file attached' });
+
+        const cRes = await pool.query(
+          `SELECT * FROM oc_content WHERE id = $1 AND user_id = $2`,
+          [req.params.contentId, req.user.id]
+        );
+        if (!cRes.rows.length) { cleanup(); return res.status(404).json({ error: 'Content not found' }); }
+        const item = cRes.rows[0];
+        if (item.youtube_video_id) { cleanup(); return res.status(409).json({ error: 'Already on YouTube' }); }
+
+        const chRes = await pool.query(
+          `SELECT * FROM oc_channels WHERE user_id = $1 AND connected = true ORDER BY id LIMIT 1`,
+          [req.user.id]
+        );
+        if (!chRes.rows.length) { cleanup(); return res.status(400).json({ error: 'No connected YouTube channel' }); }
+        const channel = chRes.rows[0];
+        const auth = yt.clientForChannel(pool, channel);
+
+        const mode = req.body.publish_mode === 'schedule' ? 'schedule' : 'now';
+        const publishAt = mode === 'schedule'
+          ? (req.body.publish_at || item.scheduled_date)
+          : null;
+        if (mode === 'schedule' && !publishAt) {
+          cleanup();
+          return res.status(400).json({ error: 'No scheduled date on this item — set one or publish now' });
+        }
+        if (mode === 'schedule' && new Date(publishAt) <= new Date()) {
+          cleanup();
+          return res.status(400).json({ error: 'Scheduled publish time must be in the future' });
+        }
+
+        let units = 0;
+        const video = await yt.uploadVideo(auth, {
+          filePath: videoFile.path,
+          title: item.title,
+          description: item.description,
+          tags: item.tags,
+          publishAt
+        });
+        units += yt.QUOTA.videosInsert;
+
+        if (thumbFile) {
+          try {
+            await yt.setThumbnail(auth, video.id, thumbFile.path, thumbFile.mimetype);
+            units += yt.QUOTA.thumbnailsSet;
+          } catch (e) {
+            console.error('Thumbnail set failed (video still uploaded):', e.message);
+          }
+        }
+
+        await pool.query(
+          `UPDATE oc_content SET
+             youtube_video_id = $1,
+             youtube_url = $2,
+             status = $3,
+             published_date = $4,
+             scheduled_date = COALESCE($5, scheduled_date),
+             updated_at = NOW()
+           WHERE id = $6`,
+          [video.id, `https://www.youtube.com/watch?v=${video.id}`,
+           mode === 'now' ? 'published' : 'scheduled',
+           mode === 'now' ? new Date() : null,
+           publishAt ? new Date(publishAt) : null,
+           item.id]
+        );
+        await yt.logQuota(pool, req.user.id, units);
+        cleanup();
+
+        res.json({
+          ok: true,
+          videoId: video.id,
+          url: `https://www.youtube.com/watch?v=${video.id}`,
+          mode,
+          publishAt,
+          quotaUnits: units
+        });
+      } catch (e) {
+        cleanup();
+        console.error('Publish error:', e.message);
+        const msg = /insufficient|scope|permission/i.test(e.message)
+          ? 'YouTube upload permission missing — disconnect and reconnect your channel in Settings to grant it'
+          : e.message;
+        res.status(500).json({ error: msg });
+      }
+    });
 
   // DELETE /api/youtube/disconnect — drop tokens, keep imported data
   router.delete('/disconnect', authMiddleware, async (req, res) => {

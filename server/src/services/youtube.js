@@ -6,11 +6,12 @@ const crypto = require('crypto');
 
 const SCOPES = [
   'https://www.googleapis.com/auth/youtube.readonly',
+  'https://www.googleapis.com/auth/youtube.upload',
   'https://www.googleapis.com/auth/yt-analytics.readonly'
 ];
 
 // Approximate quota costs (units) per Data API call — 10,000/day default budget
-const QUOTA = { channelsList: 1, playlistItemsList: 1, videosList: 1 };
+const QUOTA = { channelsList: 1, playlistItemsList: 1, videosList: 1, videosInsert: 1600, thumbnailsSet: 50 };
 
 // --- Token encryption at rest (AES-256-GCM, key derived from JWT_SECRET) ---
 function key() {
@@ -174,8 +175,43 @@ async function fetchVideoDetails(auth, videoIds) {
   return out;
 }
 
+// Upload a video file. When publishAt is set the video goes up private
+// with a scheduled publish time; otherwise it publishes immediately.
+// googleapis uses the resumable upload protocol for media streams.
+async function uploadVideo(auth, { filePath, title, description, tags, publishAt, madeForKids = false }) {
+  const fs = require('fs');
+  const yt = google.youtube({ version: 'v3', auth });
+  const status = publishAt
+    ? { privacyStatus: 'private', publishAt: new Date(publishAt).toISOString(), selfDeclaredMadeForKids: madeForKids }
+    : { privacyStatus: 'public', selfDeclaredMadeForKids: madeForKids };
+  const res = await yt.videos.insert({
+    part: 'snippet,status',
+    requestBody: {
+      snippet: {
+        title: (title || 'Untitled').slice(0, 100),
+        description: description || '',
+        tags: tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean).slice(0, 30) : undefined
+      },
+      status
+    },
+    media: { body: fs.createReadStream(filePath) }
+  });
+  return res.data; // includes id
+}
+
+async function setThumbnail(auth, videoId, filePath, mimeType) {
+  const fs = require('fs');
+  const yt = google.youtube({ version: 'v3', auth });
+  const res = await yt.thumbnails.set({
+    videoId,
+    media: { mimeType: mimeType || 'image/jpeg', body: fs.createReadStream(filePath) }
+  });
+  return res.data;
+}
+
 module.exports = {
   SCOPES, QUOTA,
+  uploadVideo, setThumbnail,
   encrypt, decrypt,
   getAuthUrl, exchangeCode, clientForChannel,
   logQuota, quotaToday,
