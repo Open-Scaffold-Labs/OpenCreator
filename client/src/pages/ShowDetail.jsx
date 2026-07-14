@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, Loader, Save, Plus, Trash2, CheckCircle2, Circle, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Loader, Save, Plus, Trash2, CheckCircle2, Circle, AlertCircle, Sparkles } from 'lucide-react'
 
 export default function ShowDetail({ pageData, navigateTo }) {
   const [item, setItem] = useState(null)
@@ -11,6 +11,47 @@ export default function ShowDetail({ pageData, navigateTo }) {
   const [brief, setBrief] = useState({ concept: '', target_viewer: '', promise: '', hook: '', outline: '' })
   const [report, setReport] = useState(null)
   const [reportErr, setReportErr] = useState(null)
+  const [aiBusy, setAiBusy] = useState(null) // which kind is generating
+  const [aiResult, setAiResult] = useState(null) // { kind, text }
+  const [aiErr, setAiErr] = useState(null)
+
+  const draft = async (kind) => {
+    setAiBusy(kind)
+    setAiErr(null)
+    setAiResult(null)
+    try {
+      const res = await fetch('/api/ai/draft', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ content_id: item.id, kind })
+      })
+      const d = await res.json()
+      if (res.ok) setAiResult(d)
+      else setAiErr(d.error || 'Draft failed')
+    } catch (err) {
+      setAiErr(err.message)
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  const applyAiResult = () => {
+    if (!aiResult) return
+    const t = aiResult.text
+    if (aiResult.kind === 'hook') {
+      setBrief(b => ({ ...b, hook: t }))
+    } else if (aiResult.kind === 'outline') {
+      setBrief(b => ({ ...b, outline: t.split('\n').map(s => s.replace(/^[-*\d.\s]+/, '').trim()).filter(Boolean).join('\n') }))
+    } else if (aiResult.kind === 'description') {
+      const desc = (t.split(/TAGS:/i)[0] || '').replace(/DESCRIPTION:/i, '').trim()
+      const tags = (t.split(/TAGS:/i)[1] || '').trim()
+      setMeta(m => ({ ...m, description: desc || m.description, tags: tags || m.tags }))
+    }
+    setAiResult(null)
+  }
+
+  const useTitle = (line) => {
+    setMeta(m => ({ ...m, title: line.replace(/^\d+[.)]\s*/, '').replace(/^["']|["']$/g, '').trim() }))
+  }
   const [script, setScript] = useState('')
   const [meta, setMeta] = useState({ title: '', description: '', tags: '' })
 
@@ -225,6 +266,61 @@ export default function ShowDetail({ pageData, navigateTo }) {
           )}
         </div>
       )}
+
+      {/* AI Assist */}
+      <div className={card}>
+        <div className="flex items-center gap-2">
+          <Sparkles size={20} className="text-purple-400" />
+          <h2 className="text-lg font-bold text-white">AI Assist</h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['titles', 'Suggest titles'],
+            ['hook', 'Draft hook'],
+            ['outline', 'Draft outline'],
+            ['description', 'Write description & tags']
+          ].map(([kind, labelText]) => (
+            <button key={kind} onClick={() => draft(kind)} disabled={!!aiBusy}
+              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors text-sm font-medium">
+              {aiBusy === kind ? <Loader size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {labelText}
+            </button>
+          ))}
+        </div>
+        {aiErr && (
+          <p className="text-sm text-red-300">{aiErr}{/no ai api key/i.test(aiErr) ? ' → Settings' : ''}</p>
+        )}
+        {aiResult && (
+          <div className="bg-slate-900 border border-purple-800 rounded-lg p-4 space-y-3">
+            {aiResult.kind === 'titles' ? (
+              <div className="space-y-1">
+                <p className="text-xs text-slate-400 mb-2">Click a title to use it:</p>
+                {aiResult.text.split('\n').filter(l => l.trim()).map((line, i) => (
+                  <button key={i} onClick={() => useTitle(line)}
+                    className="block w-full text-left px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 hover:text-purple-300 rounded transition-colors">
+                    {line}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans">{aiResult.text}</pre>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setAiResult(null)}
+                className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors">
+                Dismiss
+              </button>
+              {aiResult.kind !== 'titles' && (
+                <button onClick={applyAiResult}
+                  className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium">
+                  Use this
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <p className="text-xs text-slate-500">Drafts use your own API key (Settings → AI Assistant). Remember to Save Brief after applying.</p>
+      </div>
 
       {/* Concept */}
       <div className={card}>

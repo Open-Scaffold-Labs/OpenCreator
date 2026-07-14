@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Save, AlertCircle, Youtube, RefreshCw, Unlink } from 'lucide-react'
+import { Save, AlertCircle, Youtube, RefreshCw, Unlink, Sparkles } from 'lucide-react'
 
 export default function Settings({ user }) {
   const [settings, setSettings] = useState({
@@ -10,6 +10,46 @@ export default function Settings({ user }) {
   })
   const [saved, setSaved] = useState(false)
   const [yt, setYt] = useState({ loading: true, configured: false, connected: false, channel: null, quota: null })
+  const [aiSettings, setAiSettings] = useState({ loading: true, configured: false, provider: 'anthropic', model: '', defaults: {} })
+  const [aiKey, setAiKey] = useState('')
+  const [aiMsg, setAiMsg] = useState(null)
+  const [aiSaving, setAiSaving] = useState(false)
+
+  const loadAi = async () => {
+    try {
+      const res = await fetch('/api/ai/settings', { headers: authHeaders() })
+      if (res.ok) {
+        const d = await res.json()
+        setAiSettings({ loading: false, configured: d.configured, provider: d.provider, model: d.model || '', defaults: d.defaults || {} })
+      } else setAiSettings(s => ({ ...s, loading: false }))
+    } catch { setAiSettings(s => ({ ...s, loading: false })) }
+  }
+
+  const saveAi = async (e) => {
+    e.preventDefault()
+    setAiSaving(true)
+    setAiMsg(null)
+    try {
+      const res = await fetch('/api/ai/settings', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({
+          provider: aiSettings.provider,
+          model: aiSettings.model || null,
+          api_key: aiKey || null
+        })
+      })
+      const d = await res.json()
+      if (res.ok) {
+        setAiMsg({ type: 'success', text: 'AI settings saved' })
+        setAiKey('')
+        loadAi()
+      } else setAiMsg({ type: 'error', text: d.error || 'Save failed' })
+    } catch (err) {
+      setAiMsg({ type: 'error', text: err.message })
+    } finally {
+      setAiSaving(false)
+    }
+  }
   const [ytBusy, setYtBusy] = useState(false)
   const [ytMessage, setYtMessage] = useState(null)
 
@@ -34,6 +74,7 @@ export default function Settings({ user }) {
 
   useEffect(() => {
     loadYtStatus()
+    loadAi()
     // Handle redirect back from Google OAuth
     const params = new URLSearchParams(window.location.search)
     if (params.get('youtube') === 'connected') {
@@ -234,6 +275,72 @@ export default function Settings({ user }) {
             </button>
           </div>
         )}
+      </div>
+
+      {/* AI Assistant (bring your own key) */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <Sparkles size={24} className="text-purple-400" />
+          <h2 className="text-xl font-bold text-white">AI Assistant</h2>
+          {aiSettings.configured && (
+            <span className="px-2 py-0.5 bg-green-900 text-green-200 text-xs rounded">key saved</span>
+          )}
+        </div>
+
+        {aiMsg && (
+          <div className={`rounded-lg p-3 text-sm ${aiMsg.type === 'success'
+            ? 'bg-green-900 border border-green-700 text-green-200'
+            : 'bg-red-900 border border-red-700 text-red-200'}`}>
+            {aiMsg.text}
+          </div>
+        )}
+
+        <p className="text-sm text-slate-400">
+          Bring your own API key — it stays encrypted in your own database and is only used to draft
+          titles, hooks, outlines, and descriptions on your shows.
+        </p>
+
+        <form onSubmit={saveAi} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-200 mb-2">Provider</label>
+              <select
+                value={aiSettings.provider}
+                onChange={(e) => setAiSettings({ ...aiSettings, provider: e.target.value })}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-red-600 focus:outline-none">
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-200 mb-2">Model</label>
+              <input
+                type="text"
+                value={aiSettings.model}
+                placeholder={aiSettings.defaults?.[aiSettings.provider] || 'default'}
+                onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-red-600 focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-200 mb-2">
+              API key {aiSettings.configured && <span className="text-slate-400">(leave blank to keep the saved one)</span>}
+            </label>
+            <input
+              type="password"
+              value={aiKey}
+              autoComplete="off"
+              placeholder={aiSettings.configured ? '••••••••••••' : 'sk-…'}
+              onChange={(e) => setAiKey(e.target.value)}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-red-600 focus:outline-none" />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" disabled={aiSaving}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors font-medium">
+              <Save size={18} /> Save AI Settings
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Preferences */}

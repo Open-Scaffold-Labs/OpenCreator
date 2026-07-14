@@ -318,6 +318,19 @@ async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS brief JSONB DEFAULT '{}';
     `);
 
+    // --- AI settings (feature/ai-drafting) ---
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oc_ai_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER UNIQUE REFERENCES oc_users(id),
+        provider VARCHAR(50) DEFAULT 'anthropic',
+        model VARCHAR(100),
+        api_key TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS oc_api_quota (
         id SERIAL PRIMARY KEY,
@@ -444,6 +457,7 @@ const equipmentRoutes = require('./routes/equipment')(pool, authMiddleware);
 const calendarRoutes = require('./routes/calendar')(pool, authMiddleware);
 const youtubeRoutes = require('./routes/youtube')(pool, authMiddleware, JWT_SECRET);
 const seriesRoutes = require('./routes/series')(pool, authMiddleware);
+const aiRoutes = require('./routes/ai')(pool, authMiddleware);
 
 app.use('/api/content', contentRoutes);
 app.use('/api/pipeline', pipelineRoutes);
@@ -457,6 +471,7 @@ app.use('/api/equipment', equipmentRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/youtube', youtubeRoutes);
 app.use('/api/series', seriesRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Website builder (shared module from openscaffold-core)
 const { createWebsiteRoutes, createPublicSiteRouter } = require(CORE_WEBSITE);
