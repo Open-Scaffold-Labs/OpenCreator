@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, Loader, Save, Plus, Trash2, CheckCircle2, Circle, AlertCircle, Sparkles } from 'lucide-react'
+import { ArrowLeft, Loader, Save, Plus, Trash2, CheckCircle2, Circle, AlertCircle, Sparkles, Gauge, RefreshCw, XCircle, AlertTriangle } from 'lucide-react'
 
 export default function ShowDetail({ pageData, navigateTo }) {
   const [item, setItem] = useState(null)
@@ -11,6 +11,19 @@ export default function ShowDetail({ pageData, navigateTo }) {
   const [brief, setBrief] = useState({ concept: '', target_viewer: '', promise: '', hook: '', outline: '' })
   const [report, setReport] = useState(null)
   const [reportErr, setReportErr] = useState(null)
+  const [advisor, setAdvisor] = useState(null)
+  const [advisorBusy, setAdvisorBusy] = useState(false)
+
+  const runAdvisor = async (contentId) => {
+    setAdvisorBusy(true)
+    try {
+      const res = await fetch(`/api/advisor/${contentId}`, { headers: authHeaders() })
+      if (res.ok) setAdvisor(await res.json())
+    } finally {
+      setAdvisorBusy(false)
+    }
+  }
+
   const [aiBusy, setAiBusy] = useState(null) // which kind is generating
   const [aiResult, setAiResult] = useState(null) // { kind, text }
   const [aiErr, setAiErr] = useState(null)
@@ -99,6 +112,10 @@ export default function ShowDetail({ pageData, navigateTo }) {
   useEffect(() => {
     if (item?.youtube_video_id) loadReport(item.id)
   }, [item?.youtube_video_id])
+
+  useEffect(() => {
+    if (item?.id && !item.youtube_video_id) runAdvisor(item.id)
+  }, [item?.id])
 
   useEffect(() => { load() }, [pageData?.id])
 
@@ -264,6 +281,47 @@ export default function ShowDetail({ pageData, navigateTo }) {
           ) : (
             <p className="text-sm text-slate-400">Loading analytics…</p>
           )}
+        </div>
+      )}
+
+      {/* Pre-publish Check (Advisor) — hidden once the show is on YouTube */}
+      {!item.youtube_video_id && advisor && (
+        <div className={card}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Gauge size={20} className={advisor.readiness === 'ready' ? 'text-green-400' : advisor.readiness === 'almost' ? 'text-yellow-400' : 'text-red-400'} />
+              <h2 className="text-lg font-bold text-white">Pre-publish Check</h2>
+              <span className={`px-2 py-0.5 text-xs rounded font-medium ${
+                advisor.readiness === 'ready' ? 'bg-green-900 text-green-200'
+                : advisor.readiness === 'almost' ? 'bg-yellow-900 text-yellow-200'
+                : 'bg-red-900 text-red-200'}`}>
+                {advisor.score} · {advisor.readiness === 'ready' ? 'ready' : advisor.readiness === 'almost' ? 'almost there' : 'not ready'}
+              </span>
+            </div>
+            <button onClick={() => runAdvisor(item.id)} disabled={advisorBusy}
+              className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white" title="Re-run (save first)">
+              <RefreshCw size={16} className={advisorBusy ? 'animate-spin' : ''} />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {advisor.checks.map((c, i) => (
+              <div key={i} className="flex items-start gap-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+                {c.status === 'pass' ? <CheckCircle2 size={16} className="text-green-400 mt-0.5 shrink-0" />
+                  : c.status === 'warn' ? <AlertTriangle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
+                  : <XCircle size={16} className="text-red-400 mt-0.5 shrink-0" />}
+                <div>
+                  <p className="text-sm text-white font-medium">{c.name}</p>
+                  <p className="text-xs text-slate-400">{c.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3">
+            <p className="text-sm font-medium text-slate-200 mb-1">
+              Length guidance {advisor.personalized && <span className="text-xs text-purple-300">(personalized to your channel)</span>}
+            </p>
+            <p className="text-sm text-slate-400">{advisor.lengthAdvice}</p>
+          </div>
         </div>
       )}
 

@@ -458,6 +458,7 @@ const calendarRoutes = require('./routes/calendar')(pool, authMiddleware);
 const youtubeRoutes = require('./routes/youtube')(pool, authMiddleware, JWT_SECRET);
 const seriesRoutes = require('./routes/series')(pool, authMiddleware);
 const aiRoutes = require('./routes/ai')(pool, authMiddleware);
+const advisorRoutes = require('./routes/advisor')(pool, authMiddleware);
 
 app.use('/api/content', contentRoutes);
 app.use('/api/pipeline', pipelineRoutes);
@@ -472,6 +473,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/youtube', youtubeRoutes);
 app.use('/api/series', seriesRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/advisor', advisorRoutes);
 
 // Website builder (shared module from openscaffold-core)
 const { createWebsiteRoutes, createPublicSiteRouter } = require(CORE_WEBSITE);
