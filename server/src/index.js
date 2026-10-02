@@ -1,6 +1,13 @@
 const path = require('path');
 // Load .env from server/ regardless of the process working directory
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+try {
+  require('./jwtSecret').assertProductionJwtSecret();
+} catch (err) {
+  console.error(err && err.message ? err.message : err);
+  process.exit(1);
+}
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -20,7 +27,8 @@ const pool = new Pool({
 
 const app = express();
 const PORT = process.env.PORT || 3012;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const { jwtSecret } = require('./jwtSecret');
+const JWT_SECRET = jwtSecret();
 
 // openscaffold-core is optional: present in local Open Scaffold ecosystem
 // installs, absent in standalone/cloud deployments (website builder off).
